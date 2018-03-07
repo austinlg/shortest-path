@@ -1,172 +1,87 @@
-const path = require('path');
-const fs = require('fs');
-
+const Shipment = require('./shipment');
 const filename = process.argv[2];
-let data = {};
-let days = {
-    'M': [],
-    'T': [],
-    'W': [],
-    'R': [],
-    'F': []
-}
-let pathCache = new Map();
+const lineEndingRegex = /\r\n|\n/;
+const store = require('./store');
+const parser = require('./parser');
 
-let arr = fs.readFileSync(filename).toString().split(/\r\n|\n/);
+function findPossibleBundles(shipment) {
+    let nextShipmentCandidates = store.getValidOptions(shipment);
+    let bundleCandidates = [];
 
-let next = {
-    '_': 'M',
-    'M': 'T',
-    'T': 'W',
-    'W': 'R',
-    'R': 'F',
-    'F': 'S'
-}
-
-class Bundle {
-    constructor(id, from, to, day) {
-        this.id = id;
-        this.from = from;
-        this.to = to;
-        this.day = day;
-        this.key = this.getKey(day, from);
-        this.next = this.getKey(next[day], to);
-        this.items = [id];
+    for (let index in nextShipmentCandidates) {
+        let path = findSingleBundle(nextShipmentCandidates[index]);
+        bundleCandidates.push(path);
     }
 
-    getKey(day, city) {
-        return day + "_" + city;
-    }
+    return bundleCandidates;
 }
 
-function cache(bundle, result) {
-    let key = bundle.id;
-    pathCache.set(key, undefined);
-    pathCache.set(key, JSON.parse(JSON.stringify(result)));
+function calculateLongestBundle(bundleCandidates, shipment) {
+    bundleCandidates.push([]);
+    let longestBundle = bundleCandidates.reduce((prev, curr) => prev.length > curr.length ? prev : curr); 
+
+    longestBundle.unshift(shipment);
+    return longestBundle;
 }
 
-function invalidate(bundle) {
-    let list = pathCache.get(bundle.id);
-    pathCache.set(bundle.id, undefined);
+function findSingleBundle(shipment) {
 
-    for (let i in list) {
-        invalidate(list[i]);
-    }
-}
-
-function pullAndValidateCache(bundle) {
-    let result = pathCache.get(bundle.id);
-
-    for (let index in result) {
-        let resultItem = result[index];
-        let cachedBundle = pathCache.get(resultItem.id);
-        if (cachedBundle === undefined) {
-            // console.log("failed to find valid cachen for" + bundle.id + " at index " + index + ", " + resultItem.id);
-            return undefined;
-        }
-    }
-
-    return result !== undefined
-        ? JSON.parse(JSON.stringify(result)) 
-        : undefined;
-}
-
-function findPath(bundle) {
-
-    let result = undefined;
-    // console.log("|===================================>");
-    let result2 = pullAndValidateCache(bundle);
-    if (result2 !== undefined) {
-        return result2;
+    let cachedBundle = store.getCachedPath(shipment);
+    if (cachedBundle !== undefined) {
+        return cachedBundle;
     }
     
-    let options = data[bundle.next];
-    let paths = [];
+    let bundleCandidates = findPossibleBundles(shipment)
+    let longestBundle = calculateLongestBundle(bundleCandidates, shipment);
 
-    for (let index in options) {
-        let option = options[index];
-        let path = findPath(option);
-        paths.push(path);
-    }
-
-    result = [];
-    for (let index in paths) {
-        result = paths[index].length >= result.length
-            ? paths[index]
-            : result;
-    }
-    result.unshift(bundle);
-
-    cache(bundle, result);
-
-    if (result2 !== undefined) {
-        return result2;
-    }
-    return result;
+    store.udpateCachedPath(shipment, longestBundle);
+    return longestBundle;
 }
 
-function remove(bundle) {
-    let options = data[bundle.key];
-    let index = options.map(e => {return e.id}).indexOf(bundle.id);
-    options.splice(index, 1);
-    data[bundle.key] = options;
-
-    options = days[bundle.day];
-    index = options.map(e => {return e.id}).indexOf(bundle.id);
-    options.splice(index, 1);
-    days[bundle.day] = options;
-
-    invalidate(bundle);
+function removeBundleShipmentsFromStore(bundle) {
+    for (let index in bundle) {
+        shipmentToRemove = bundle[index];
+        store.delete(shipmentToRemove)
+    }
 }
 
-
-for (let i in arr) {
-    let fields = arr[i].split(" ");
-    let item = new Bundle(fields[0], fields[1], fields[2], fields[3]);
-
-    if (item.day === undefined) {
-        continue;
+function findTodaysBundles(todaysShipmentList) {
+    let todaysBundles = [];
+    while (todaysShipmentList && todaysShipmentList.length > 0) {
+        let longestBundle = findSingleBundle(todaysShipmentList[0]); // This method is destructive to the store so we keep pulling in the first item.
+        removeBundleShipmentsFromStore(longestBundle);
+        todaysBundles.push(longestBundle);
     }
-    
-    if (data[item.key] == undefined) {
-        data[item.key] = [item];
-    } else {
-        data[item.key].push(item);
-    }
-
-    days[item.day].push(item);
+    return todaysBundles;
 }
 
-let results = [];
+//parse and Store
+let shipments = parser.parseFile(filename, lineEndingRegex);
+for (let i in shipments) {
+    let item = shipments[i]; 
+    store.addShipment(item);
+}
+
+//calculate Paths
+let allBundles = [];
 let day = 'M'
-let currentDayList = [];
-while (currentDayList != undefined) {
-    currentDayList = days[day];
-        
-    while (currentDayList && currentDayList.length > 0) {
-        let bundle = currentDayList[0];
-        let result = findPath(bundle);
+let todaysShipmentList = [];
+while (todaysShipmentList !== undefined) {
+    todaysShipmentList = store.days[day];
+    allBundles = allBundles.concat(findTodaysBundles(todaysShipmentList));
+    day = store.next[day];
 
-        for (let index in result) {
-            bundleToRemove = result[index];
-            remove(bundleToRemove)
-        }
-
-        results.push(result);
-    }
-
-    day = next[day];
 }
 
-for (let i in results) {
-    let resultList = results[i];
+//print
+for (let i in allBundles) {
+    let resultList = allBundles[i];
     let resultString = "";
 
     for (let j in resultList) {
-        let bundle = resultList[j];
-        resultString += bundle.id + " ";
+        let shipment = resultList[j];
+        resultString += shipment.id + " ";
     }
 
-    // console.log(i + ": " + resultString);
     console.log(resultString);
 }

@@ -1,89 +1,45 @@
-# Shipment Bundling
+# Install
 
-One problem that truckers face is having to find work that minimizes the number of miles they drive empty (aka _dead-heading_). Empty miles add to fuel costs, and are an opportunity cost - they could be driving that same distance hauling freight.
+Node version: v9.4.0
 
-**Convoy** wants to help by automatically bundling shipments that we offer to truck drivers. This would make getting work from Convoy easier than getting work from multiple sources, and ensure drivers make more money when working with us. We receive hundreds of shipments per day, which gives plenty of opportunity to group them.
+## Run Solution
+```node solution.js <file_name>```
 
-We'd like you to implement a V1 shipment bundler in a language of your choice.
+## valdiate
+```node validate.js "node solution.js" tests/*```
 
-## Spec for V1
+For Example
 
-Given a file with a single week’s worth of shipments (Monday through Friday), find the fewest number of bundles to offer to carriers.
+```node solution.js tests/personal.txt```
 
-A shipment bundle is a chronologically ordered sequence of shipments, where each shipment's `START_CITY` is the same as the previous one’s `END_CITY`, and their days are sequential and consecutive (e.g. `M-T-W` is okay, `M-F` is not). Every shipment should be in exactly one bundle, and bundles of one shipment are okay. In the case of a tie (multiple optimal solutions of N bundles), any solution is acceptable.
+# Approach
+## Basic Approach
+My approach was to optimize for longer bundles. 
+I would prefer longer bundles to shorter ones. 
+The longer the Bundle is the better.
 
-Your program should take the form of
-```
-<run command> <input file name>
-```
+### Data Structures
+1. **NextKey Map:** stores arrays of shipments based on their start day and city for easy lookup during the bundle calculation.
+1. **Day Map:** Stores array of bundles by their departure date.
 
-### Input file
+### Finding the Longest Bundle
+In order to determine the best bundle. You need to look at each of your next options and trace out the possible paths. Given, that we can only move in one direction as time marches ceaselessly forward this makes recursing through this stage ideal.
 
-Each line in the file represents one shipment, and looks like:
-```
-<SHIPMENT_ID> <START_CITY> <END_CITY> <DAY_OF_WEEK>
-```
-`SHIPMENT_ID`s are integers, cities are single words (e.g. `SAN_FRANCISCO`), and the days of the week are
+Start with shipments leaving on the earliest possible date, given by the Day Map, and calculate the longest bundles for that day. Once you have finished with that day continue to the next day until we run out of shipments.
 
-* `M` - Monday
-* `T` - Tuesday
-* `W` - Wednesday
-* `R` - Thursday
-* `F` - Friday
+Each Shipment is a node in a directed Graph. At each point you need to find the possible options that you can move to and see what their longest bundle is. By recursively calling you will perform a Depth first search until there are no options. For progressing. In this case that would be Friday at the latest. 
 
-### Output (stdout)
-The output of your program should be to `stdout`. Each line represents one shipment bundle as a series of shipment IDs, each separated by a space. The shipments in each bundle should be ordered chronologically, earliest to latest. The order of the lines in the file does not matter.
+Once you have all possible Bundles. You take the Bundle with the longest length and discard the rest.
 
-### Example
+### Updating the data.
+I chose a destructive methodology for this program because once we have logged the bundle. We no longer need that data. So I'd rather get rid of it.
 
-Here is a sample input file of 6 shipments:
-```
-1 SEATTLE PORTLAND M
-2 PORTLAND SAN_FRANCISCO T
-3 PORTLAND DENVER T
-22 SEATTLE DENVER R
-44 DENVER SEATTLE W
-99 DENVER KANSAS_CITY F
-```
-And here is a sample output file for the above input which bundles the 5 shipments into 2 bundles:
-```
-3 44 22 99
-1 2
-```
-You can see that
-1. Every shipment is in exactly one bundle.
-2. Shipments within a bundle are ordered chronologically.
-3. Shipments within a bundle pick up at the place the previous one left off.
-4. There are no gaps in the days between shipments.
+## Optimizations
+Given that we are spawning some unknown number of recursions it occurred to me that many of these calculated longest bundles are cacheable. It's possible that when we were calculating the longest bundles for shipments leaving on a Monday we calculated the longest bundle for some shipment leaving on Wednesday that did not end up being used. Therefore if we cache those results we can save the need of recalculating the bundle and continuing down the DFS recursion.
 
-### Testing your code
+One pitfall here is that just because we didn't use the shipment where that bundle starts does not mean that we did not use some of the shipments in the bundle we originally calculated there are two approaches to handling this.
+1. **Eager:** Where we actively see the Shipments we use and invalidate caches entries that include these packages
+1. **Lazy:** We check if an entry is invalid as we pull the record.
 
-We've provided a small test program for validating your output, a series of test inputs and some answers. When evaluating your program, we will run these tests against your program.  If you add tests of your own, please include them with your submission.
+The Lazy approach is a simpler to construct (Shipment -> longestBundle[]) and maintain as lazily checking invalidation is constant time in this scenario as the bundle sizes are limited to 5 so we'll check at most 5 packages. In general the time complexity is O(n) which is on par to how you'd be able to do it eagerly, but would require additional data structures to create needed references.
 
-The test program, described below, is configured with a timeout to ensure your solution completes in a reasonable amount of time. Keep this in mind when testing your algorithm.
-
-#### Setup
-
-Install `node` (>= 6)
-
-#### Running tests
-
-To run a test:
-```
-node validate.js "<run command for your program>" <test files>…
-```
-
-E.g. for a Node script, you might run:
-```sh
-node validate.js "node shipment_bundler.js" tests/*
-```
-
-If there is a corresponding entry in [`answers.json`](./answers.json) for the test, the test will also assert that your output matches the expected number of shipment bundles expressed by that file.
-
-## What to submit
-
-Please make sure you include all of the following in your submission:
-
-1. Program source code
-2. Very specific instructions on how to build and run your program from a command line.
-3. Any additional tests you've created
