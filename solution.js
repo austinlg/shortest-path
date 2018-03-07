@@ -10,6 +10,7 @@ let days = {
     'R': [],
     'F': []
 }
+let pathCache = new Map();
 
 let arr = fs.readFileSync(filename).toString().split(/\r\n|\n/);
 
@@ -33,39 +34,74 @@ class Bundle {
         this.items = [id];
     }
 
-    prepend(bundle) {
-        this.key = this.getKey(bundle.day, bundle.from);
-        this.items.slice(0, bundle.id);
-    }
-
-    append(bundle) {
-        this.next = this.getKey(next[bundle[day]], bundle.to);
-        this.items.push(bundle.id);
-    }
-
     getKey(day, city) {
         return day + "_" + city;
     }
 }
 
+function cache(bundle, result) {
+    let key = bundle.id;
+    pathCache.set(key, undefined);
+    pathCache.set(key, JSON.parse(JSON.stringify(result)));
+}
+
+function invalidate(bundle) {
+    let list = pathCache.get(bundle.id);
+    pathCache.set(bundle.id, undefined);
+
+    for (let i in list) {
+        invalidate(list[i]);
+    }
+}
+
+function pullAndValidateCache(bundle) {
+    let result = pathCache.get(bundle.id);
+
+    for (let index in result) {
+        let resultItem = result[index];
+        let cachedBundle = pathCache.get(resultItem.id);
+        if (cachedBundle === undefined) {
+            // console.log("failed to find valid cachen for" + bundle.id + " at index " + index + ", " + resultItem.id);
+            return undefined;
+        }
+    }
+
+    return result !== undefined
+        ? JSON.parse(JSON.stringify(result)) 
+        : undefined;
+}
+
 function findPath(bundle) {
+
+    let result = undefined;
+    // console.log("|===================================>");
+    let result2 = pullAndValidateCache(bundle);
+    if (result2 !== undefined) {
+        return result2;
+    }
+    
     let options = data[bundle.next];
     let paths = [];
 
     for (let index in options) {
         let option = options[index];
         let path = findPath(option);
-        path.unshift(bundle);
         paths.push(path);
     }
 
-    let result = [bundle];
+    result = [];
     for (let index in paths) {
-        result = paths[index].length > result.length
+        result = paths[index].length >= result.length
             ? paths[index]
             : result;
     }
+    result.unshift(bundle);
 
+    cache(bundle, result);
+
+    if (result2 !== undefined) {
+        return result2;
+    }
     return result;
 }
 
@@ -79,6 +115,8 @@ function remove(bundle) {
     index = options.map(e => {return e.id}).indexOf(bundle.id);
     options.splice(index, 1);
     days[bundle.day] = options;
+
+    invalidate(bundle);
 }
 
 
@@ -98,8 +136,6 @@ for (let i in arr) {
 
     days[item.day].push(item);
 }
-
-// console.log(days);
 
 let results = [];
 let day = 'M'
@@ -131,5 +167,6 @@ for (let i in results) {
         resultString += bundle.id + " ";
     }
 
+    // console.log(i + ": " + resultString);
     console.log(resultString);
 }
