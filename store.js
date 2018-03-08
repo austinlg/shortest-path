@@ -46,7 +46,18 @@ exports.getValidOptions = (bundle) => {
 }
 
 exports.getCachedPath = (bundle) => {
-    return cache.get(bundle)
+    let result = cache.get(bundle.id);
+
+    for (let index in result) {
+        let resultItem = result[index];
+        let cachedBundle = pathCache.get(resultItem.id);
+        if (cachedBundle === undefined) {
+            // console.log("failed to find valid cachen for" + bundle.id + " at index " + index + ", " + resultItem.id);
+            return undefined;
+        }
+    }
+
+    return result || undefined;
 }
 
 exports.udpateCachedPath = (bundle, result) => {

@@ -83,5 +83,5 @@ for (let i in allBundles) {
         resultString += shipment.id + " ";
     }
 
-    console.log(i + " : " + resultString);
+    console.log(resultString);
 }
