@@ -43,3 +43,5 @@ One pitfall here is that just because we didn't use the shipment where that bund
 
 The Lazy approach is a simpler to construct (Shipment -> longestBundle[]) and maintain as lazily checking invalidation is constant time in this scenario as the bundle sizes are limited to 5 so we'll check at most 5 packages. In general the time complexity is O(n) which is on par to how you'd be able to do it eagerly, but would require additional data structures to create needed references.
 
+All in all with my personal Test file, which is about 2000 shipments randomly generated so the bundles are shorter, caching cut the runtime but about 60%. for the provideed thousand_packages file I was seeing about a 30% decrease in  runtime.
+
